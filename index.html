@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b5264">
+<title>海ログ | SeaLog</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--navy:#103b50;--teal:#087e8b;--sea:#e8f5f6;--ink:#173342;--muted:#637b86;--line:#d8e5e8;--bg:#f4f8f9;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif}
+header{background:linear-gradient(135deg,#0b5264,#087e8b);color:white;padding:22px 18px 25px;border-radius:0 0 22px 22px}
+header h1{margin:0;font-size:25px;letter-spacing:.04em}header p{margin:5px 0 0;font-size:13px;opacity:.88}
+main{max-width:760px;margin:auto;padding:14px 14px 40px}.card{background:white;border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 3px 14px #1233}
+h2{font-size:17px;margin:0 0 13px}.sub{font-size:12px;color:var(--muted);line-height:1.6}
+button,.button{border:0;border-radius:12px;background:var(--teal);color:white;font-size:15px;font-weight:650;padding:13px 16px;cursor:pointer;display:inline-flex;justify-content:center;align-items:center;gap:7px}
+button.secondary{background:#e8f3f4;color:var(--navy)}button.danger{background:#fff0ee;color:#a33}
+input,textarea,select{width:100%;border:1px solid #cbdadd;border-radius:10px;padding:11px;font:inherit;background:white;color:var(--ink);margin:5px 0 11px}
+label{font-size:13px;font-weight:650;display:block}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1}
+#preview{width:100%;max-height:340px;object-fit:contain;border-radius:12px;background:#eef3f4;display:none}
+#map{height:240px;border-radius:12px;background:#eaf0f1}
+.kv{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1f2;padding:9px 0;font-size:14px}.kv:last-child{border:0}.kv b{text-align:right}
+.notice{padding:10px 12px;border-radius:10px;background:#fff8e5;color:#73591d;font-size:12px;line-height:1.6}
+.success{background:#eaf7f1;color:#176344}.record{border:1px solid var(--line);padding:12px;border-radius:12px;margin:8px 0;display:flex;gap:12px;align-items:center}.record img{width:76px;height:66px;object-fit:cover;border-radius:8px;background:#edf2f3}.record div{min-width:0;flex:1}.record strong{display:block}.record small{color:var(--muted)}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:15px}
+.hidden{display:none!important}
+@media(max-width:430px){.grid{grid-template-columns:1fr 1fr}.card{padding:14px}header{padding-top:19px}}
+</style>
+</head>
+<body>
+<header><h1>🌊 海ログ <small style="font-size:13px;font-weight:400">SeaLog</small></h1><p>写真から、海の記録をかんたん作成。</p></header>
+<main>
+<section class="card">
+<h2>① 写真を読み込む</h2>
+<label for="photo">釣り場・海の写真</label>
+<input id="photo" type="file" accept="image/*">
+<img id="preview" alt="選択した写真">
+<div class="sub">写真のEXIF情報にGPS・撮影日時があれば自動取得します。SNS等で共有された写真は情報が削除されている場合があります。</div>
+<div class="actions"><button id="analyze">写真を解析する</button><button class="secondary" id="gps">現在地を使う</button></div>
+</section>
+
+<section class="card">
+<h2>② 撮影情報</h2>
+<div class="grid">
+<div><label>撮影日</label><input id="date" type="date"></div>
+<div><label>撮影時刻</label><input id="time" type="time"></div>
+</div>
+<div class="grid">
+<div><label>緯度</label><input id="lat" type="number" step="any" placeholder="例 35.0000"></div>
+<div><label>経度</label><input id="lon" type="number" step="any" placeholder="例 139.0000"></div>
+</div>
+<label>場所・釣り場名</label><input id="place" placeholder="例：神奈川県三浦市 ○○港">
+<div class="actions"><button class="secondary" id="lookup">場所・天候を調べる</button></div>
+<div id="map" style="margin-top:12px"></div>
+<p class="sub" id="mapnote">位置情報が設定されると地図に表示します。</p>
+</section>
+
+<section class="card">
+<h2>③ 撮影時の天候・海況</h2>
+<div id="weather" class="sub">位置・撮影日時を入力して「場所・天候を調べる」を押してください。</div>
+<div class="notice" style="margin-top:10px">過去の天候は気象再解析データによる推定値です。現地観測値とは異なる場合があります。沖合・海上では精度に限界があります。</div>
+</section>
+
+<section class="card">
+<h2>④ 潮の状態（気象庁）</h2>
+<p class="sub">写真のGPS位置を優先し、写真に位置情報がない場合はiPhoneの現在地から最寄りの掲載地点候補を探します。</p>
+<div class="actions"><button id="jmaTide">最寄りの気象庁潮位情報を調べる</button></div>
+<div id="tide" class="sub" style="margin-top:10px">写真を解析するか現在地を取得してから押してください。</div>
+<label>潮回り・状態（必要に応じて入力）</label>
+<select id="tideManual"><option value="">未入力</option><option>大潮</option><option>中潮</option><option>小潮</option><option>長潮</option><option>若潮</option><option>上げ潮</option><option>下げ潮</option><option>満潮付近</option><option>干潮付近</option></select>
+<div class="grid">
+<div><label>潮位（m・任意）</label><input id="tideHeight" type="number" step="0.01" placeholder="気象庁で確認して入力"></div>
+<div><label>潮のメモ</label><input id="tideMemo" placeholder="例：満潮から下げ始め"></div>
+</div>
+<div class="notice">気象庁の潮位表は天文潮位（予測）です。実際の観測潮位とは異なります。最寄り候補は位置からの距離で選びますが、海岸地形や湾の形によって釣り場の潮位と異なる場合があります。</div>
+</section>
+
+<section class="card">
+<h2>⑤ 釣果・活動メモ</h2>
+<div class="grid">
+<div><label>魚種</label><input id="fish" placeholder="例：アジ"></div>
+<div><label>匹数</label><input id="count" type="number" min="0" placeholder="例：5"></div>
+</div>
+<div class="grid">
+<div><label>サイズ（cm）</label><input id="size" type="number" min="0" step="0.1"></div>
+<div><label>釣り方</label><input id="method" placeholder="例：サビキ"></div>
+</div>
+<label>メモ</label><textarea id="memo" rows="3" placeholder="仕掛け、風、波、状況など"></textarea>
+<div class="actions"><button id="save">この記録を保存</button><button class="secondary" id="csv">CSVを書き出す</button></div>
+<p class="sub">記録と写真はこの端末のブラウザ内に保存します。ブラウザのデータ削除や端末変更で消えることがあるため、定期的にCSVを書き出してください。</p>
+</section>
+
+<section class="card">
+<h2>⑥ 保存した記録</h2><div id="records" class="sub">まだ記録はありません。</div>
+</section>
+
+<section class="card">
+<h2>設定</h2>
+<label>WorldTides APIキー（任意）</label><input id="tideKey" type="password" placeholder="APIキーを入力">
+<button class="secondary" id="saveSettings">APIキーをこの端末に保存</button>
+<p class="sub">潮汐予測には外部サービスWorldTidesのAPIキーが必要です。利用料金・クレジット・利用条件を確認して設定してください。キーは端末内に保存されますが、ブラウザからAPIへ直接送信されます。</p>
+</section>
+<footer>海ログ SeaLog • 写真・位置情報は大切に管理してください。</footer>
+</main>
+<script src="https://unpkg.com/exifr/dist/lite.umd.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let photoData=null, photoName="", map, marker, currentWeather=null, tideResult=null;
+const dbPromise=new Promise((resolve,reject)=>{const r=indexedDB.open("SeaLogDB",1);r.onupgradeneeded=()=>r.result.createObjectStore("records",{keyPath:"id"});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+function dbtx(mode,fn){return dbPromise.then(db=>new Promise((resolve,reject)=>{const tx=db.transaction("records",mode),s=tx.objectStore("records");fn(s,resolve);tx.onerror=()=>reject(tx.error)}))}
+function localDate(d){const x=new Date(d.getTime()-d.getTimezoneOffset()*60000);return x.toISOString().slice(0,10)}
+function setCoords(lat,lon){$("lat").value=Number(lat).toFixed(6);$("lon").value=Number(lon).toFixed(6);updateMap()}
+function coords(){const lat=parseFloat($("lat").value),lon=parseFloat($("lon").value);return Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180?{lat,lon}:null}
+function initMap(){map=L.map("map").setView([35.45,139.64],8);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map)}
+function updateMap(){const c=coords();if(!c)return;if(!map)return;if(marker)marker.remove();marker=L.marker([c.lat,c.lon]).addTo(map);map.setView([c.lat,c.lon],13);$("mapnote").textContent=`緯度 ${c.lat.toFixed(5)} / 経度 ${c.lon.toFixed(5)}`}
+$("photo").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;photoName=f.name;photoHasGps=false;const reader=new FileReader();reader.onload=()=>{photoData=reader.result;$("preview").src=photoData;$("preview").style.display="block"};reader.readAsDataURL(f)});
+$("analyze").onclick=async()=>{const f=$("photo").files[0];if(!f){alert("先に写真を選択してください");return}try{const ex=await exifr.parse(f,{gps:true,DateTimeOriginal:true,CreateDate:true,ModifyDate:true,latitude:true,longitude:true});if(ex){const d=ex.DateTimeOriginal||ex.CreateDate||ex.ModifyDate;if(d instanceof Date&&!isNaN(d)){ $("date").value=localDate(d);$("time").value=d.toTimeString().slice(0,5)}if(Number.isFinite(ex.latitude)&&Number.isFinite(ex.longitude)){setCoords(ex.latitude,ex.longitude);photoHasGps=true;}alert("写真情報を読み込みました。取得できない項目は手入力してください。")}else alert("写真に撮影情報がありません。日時・場所を手入力してください。")}catch(e){alert("写真情報を読み取れませんでした。日時・場所を手入力してください。")}};
+$("gps").onclick=()=>{if(!navigator.geolocation)return alert("この端末では位置情報を利用できません");navigator.geolocation.getCurrentPosition(p=>{photoHasGps=false;setCoords(p.coords.latitude,p.coords.longitude)},e=>alert("現在地を取得できません。位置情報の許可を確認してください。"),{enableHighAccuracy:true,timeout:15000})};
+async function reverseGeocode(c){try{const u=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${c.lat}&lon=${c.lon}`;const r=await fetch(u);const j=await r.json();if(j.display_name)$("place").value=j.display_name}catch(e){}}
+function weatherText(code){if(code===0)return"快晴";if([1,2].includes(code))return"晴れ・一部曇り";if(code===3)return"曇り";if([45,48].includes(code))return"霧";if([51,53,55,61,63,65,80,81,82].includes(code))return"雨";if([71,73,75,77,85,86].includes(code))return"雪";if([95,96,99].includes(code))return"雷雨";return"不明"}
+async function getWeather(c){const date=$("date").value;if(!date)throw Error("撮影日を入力してください");const hour=($("time").value||"12:00").slice(0,2);const url=`https://archive-api.open-meteo.com/v1/archive?latitude=${c.lat}&longitude=${c.lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;const r=await fetch(url);if(!r.ok)throw Error("天候データを取得できません");const j=await r.json();const i=j.hourly.time.findIndex(t=>t.slice(11,13)===hour);if(i<0)throw Error("指定時刻の天候データがありません");return{time:j.hourly.time[i],temp:j.hourly.temperature_2m[i],humidity:j.hourly.relative_humidity_2m[i],rain:j.hourly.precipitation[i],code:j.hourly.weather_code[i],wind:j.hourly.wind_speed_10m[i],direction:j.hourly.wind_direction_10m[i]}}
+// 気象庁の潮位表掲載地点から選ぶための代表地点カタログ。
+// 座標は地点検索用の概略位置。実際の潮位はリンク先の気象庁ページで確認する。
+const jmaStations=[
+{name:"稚内",lat:45.415,lon:141.673,area:"北海道北西部"},
+{name:"網走",lat:44.020,lon:144.274,area:"北海道東部"},
+{name:"釧路",lat:42.984,lon:144.382,area:"北海道東部"},
+{name:"函館",lat:41.768,lon:140.728,area:"北海道南西部"},
+{name:"青森",lat:40.827,lon:140.768,area:"東北地方北部"},
+{name:"宮古",lat:39.640,lon:141.957,area:"東北地方北部"},
+{name:"釜石",lat:39.275,lon:141.885,area:"東北地方北部"},
+{name:"石巻",lat:38.418,lon:141.303,area:"東北地方南部"},
+{name:"仙台新港",lat:38.268,lon:141.025,area:"東北地方南部"},
+{name:"小名浜",lat:36.947,lon:140.905,area:"東北地方南部"},
+{name:"銚子",lat:35.741,lon:140.856,area:"関東地方・伊豆諸島"},
+{name:"東京",lat:35.653,lon:139.767,area:"関東地方・伊豆諸島"},
+{name:"横浜",lat:35.444,lon:139.638,area:"関東地方・伊豆諸島"},
+{name:"横須賀",lat:35.283,lon:139.672,area:"関東地方・伊豆諸島"},
+{name:"館山",lat:34.996,lon:139.870,area:"関東地方・伊豆諸島"},
+{name:"石廊崎",lat:34.603,lon:138.846,area:"東海地方"},
+{name:"御前崎",lat:34.608,lon:138.218,area:"東海地方"},
+{name:"舞阪",lat:34.685,lon:137.617,area:"東海地方"},
+{name:"名古屋",lat:35.092,lon:136.884,area:"東海地方"},
+{name:"津",lat:34.718,lon:136.525,area:"東海地方"},
+{name:"尾鷲",lat:34.070,lon:136.193,area:"東海地方"},
+{name:"大阪",lat:34.650,lon:135.430,area:"近畿地方"},
+{name:"神戸",lat:34.690,lon:135.195,area:"近畿地方"},
+{name:"和歌山",lat:34.230,lon:135.150,area:"近畿地方"},
+{name:"境",lat:35.545,lon:133.230,area:"中国地方"},
+{name:"浜田",lat:34.900,lon:132.070,area:"中国地方"},
+{name:"徳島",lat:34.070,lon:134.570,area:"四国"},
+{name:"高松",lat:34.350,lon:134.050,area:"四国"},
+{name:"高知",lat:33.500,lon:133.570,area:"四国"},
+{name:"松山",lat:33.850,lon:132.700,area:"四国"},
+{name:"下関",lat:33.950,lon:130.930,area:"九州地方北部"},
+{name:"博多",lat:33.610,lon:130.400,area:"九州地方北部"},
+{name:"長崎",lat:32.750,lon:129.870,area:"九州地方北部"},
+{name:"熊本",lat:32.780,lon:130.570,area:"九州地方北部"},
+{name:"鹿児島",lat:31.590,lon:130.560,area:"九州地方南部"},
+{name:"那覇",lat:26.210,lon:127.680,area:"南西諸島"}
+];
+function nearestJmaStation(c){const rad=x=>x*Math.PI/180;let best=null;for(const s of jmaStations){const a=rad(s.lat-c.lat),b=rad(s.lon-c.lon),h=Math.sin(a/2)**2+Math.cos(rad(c.lat))*Math.cos(rad(s.lat))*Math.sin(b/2)**2,d=6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));if(!best||d<best.distanceKm)best={...s,distanceKm:d}}return best}
+function showJmaTide(c){const s=nearestJmaStation(c);const d=$("date").value||localDate(new Date());const url="https://www.data.jma.go.jp/kaiyou/db/tide/suisan/index.php";$("tide").innerHTML=`<div class="kv"><span>位置の基準</span><b>${photoHasGps?"写真の撮影場所":"iPhoneの現在地"}</b></div><div class="kv"><span>最寄り候補地点</span><b>${s.name}（${s.area}）</b></div><div class="kv"><span>位置からの直線距離</span><b>約 ${Math.round(s.distanceKm)} km</b></div><p>対象日：${d}</p><p>気象庁の潮位表で「${s.name}」を選択し、満潮・干潮と毎時潮位を確認してください。</p><a href="${url}" target="_blank" rel="noopener" class="button" style="text-decoration:none">気象庁の潮位表を開く ↗</a><p class="sub">このアプリは気象庁ページから潮位数値を直接取り込んでいません。気象庁サイトで地点と日付を確認後、必要な潮位を下の欄に記録してください。</p>`;tideResult={provider:"気象庁",station:s.name,distanceKm:Math.round(s.distanceKm),date:d,sourceUrl:url,positionSource:photoHasGps?"写真GPS":"現在地"}}
+let photoHasGps=false;
+async function getTide(c){showJmaTide(c);return tideResult}
+$("jmaTide").onclick=()=>{const c=coords();if(!c)return alert("写真を解析するか「現在地を使う」で位置を取得してください");showJmaTide(c)};
+$("lookup").onclick=async()=>{const c=coords();if(!c)return alert("緯度・経度を入力するか、写真のGPS情報または現在地を取得してください");if(!$("date").value)return alert("撮影日を入力してください");$("weather").textContent="天候情報を取得中…";$("tide").textContent="潮汐情報を確認中…";updateMap();reverseGeocode(c);try{currentWeather=await getWeather(c);const w=currentWeather;$("weather").innerHTML=`<div class="kv"><span>天候</span><b>${weatherText(w.code)}</b></div><div class="kv"><span>気温</span><b>${w.temp??"—"} ℃</b></div><div class="kv"><span>湿度</span><b>${w.humidity??"—"} %</b></div><div class="kv"><span>降水量</span><b>${w.rain??"—"} mm/h</b></div><div class="kv"><span>風速・風向</span><b>${w.wind??"—"} km/h・${w.direction??"—"}°</b></div><p class="sub">Open-Meteoの過去気象データ（${w.time}）</p>`}catch(e){$("weather").textContent="天候取得エラー："+e.message}
+};
+function getRecord(){const c=coords();return{id:Date.now(),created:new Date().toISOString(),photo:photoData,photoName, date:$("date").value,time:$("time").value,lat:c?.lat??null,lon:c?.lon??null,place:$("place").value,weather:currentWeather,tideInfo:tideResult,tideManual:$("tideManual").value,tideHeight:$("tideHeight").value,tideMemo:$("tideMemo").value,fish:$("fish").value,count:$("count").value,size:$("size").value,method:$("method").value,memo:$("memo").value}}
+$("save").onclick=async()=>{if(!$("date").value)return alert("撮影日を入力してください");try{const rec=getRecord();await dbtx("readwrite",(s,done)=>{s.put(rec);done()});alert("記録を保存しました");loadRecords()}catch(e){alert("保存できませんでした。写真の容量が大きい可能性があります。")}};
+async function loadRecords(){const arr=await dbtx("readonly",(s,done)=>{const r=s.getAll();r.onsuccess=()=>done(r.result)});$("records").innerHTML=arr.length?arr.sort((a,b)=>b.id-a.id).map(r=>`<div class="record">${r.photo?`<img src="${r.photo}">`:""}<div><strong>${r.date||"日付なし"} ${r.time||""}　${r.fish||"釣果未入力"}</strong><small>${r.place||"場所未入力"} ・ ${r.count||0}匹</small><br><button class="secondary" style="padding:6px 10px;font-size:12px;margin-top:5px" onclick="showRecord(${r.id})">詳細</button> <button class="danger" style="padding:6px 10px;font-size:12px;margin-top:5px" onclick="deleteRecord(${r.id})">削除</button></div></div>`).join(""):"まだ記録はありません。"}
+window.showRecord=async id=>{const r=await dbtx("readonly",(s,d)=>{const q=s.get(id);q.onsuccess=()=>d(q.result)});if(!r)return;alert([`${r.date} ${r.time}`,r.place,`魚種：${r.fish} / ${r.count}匹`,r.memo].filter(Boolean).join("\n"))};
+window.deleteRecord=async id=>{if(!confirm("この記録を削除しますか？"))return;await dbtx("readwrite",(s,d)=>{s.delete(id);d()});loadRecords()};
+$("csv").onclick=async()=>{const arr=await dbtx("readonly",(s,d)=>{const q=s.getAll();q.onsuccess=()=>d(q.result)});if(!arr.length)return alert("記録がありません");const cols=["date","time","place","lat","lon","fish","count","size","method","weather","tideInfo","tideManual","tideHeight","tideMemo","memo"];const esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';const rows=[cols.join(","),...arr.map(r=>cols.map(k=>esc(k==="weather"?(r.weather?`${weatherText(r.weather.code)} 気温${r.weather.temp}℃ 風${r.weather.wind}km/h`:""):k==="tideInfo"?(r.tideInfo?`${r.tideInfo.station}（約${r.tideInfo.distanceKm}km）`:""):r[k])).join(","))];const blob=new Blob(["\ufeff"+rows.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sealog_records.csv";a.click();URL.revokeObjectURL(a.href)};
+$("saveSettings").onclick=()=>{localStorage.setItem("sealog_tide_key",$("tideKey").value.trim());alert("この端末に設定しました")};
+$("tideKey").value=localStorage.getItem("sealog_tide_key")||"";
+$("date").value=localDate(new Date());$("time").value=new Date().toTimeString().slice(0,5);
+initMap();loadRecords();
+</script>
+</body></html>
